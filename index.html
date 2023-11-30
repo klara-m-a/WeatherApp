@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas Weather App</title>
+    <script src="fetchCity.js"></script>
+    <link rel="stylesheet" type="text/css" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins&family=Roboto:wght@100;300&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <!-- Main container div for the entire application -->
+    <div class="container">
+        <!-- Search bar div containing autocomplete input and dropdown -->
+        <div class="search-bar">
+            <div class="autocomplete">
+                <!-- Input field for entering city names -->
+                <input type="text" id="cityInput" placeholder="Search City" oninput="handleInput()">
+                <!-- Dropdown to show autocomplete suggestions -->
+                <div class="autocomplete-dropdown" id="autocompleteDropdown"></div>
+            </div>
+        </div>
+        <!-- Forecast buttons for Today, 5-Day Forecast, and Recent History -->
+        <div class="forecast-buttons">
+            <button class="search-button" onclick="showWeatherCanvas()">Today</button>
+            <button class="search-button" onclick="showForecastCanvas()">5-Day Forecast</button>
+            <button class="search-button" onclick="showHistoricalCanvas()">Recent History</button>
+        </div>
+    </div>
+    <!-- Canvas elements for displaying weather, 5-day forecast, and recent history -->
+    <canvas id="weatherCanvas" width="800" height="200"></canvas>
+    <canvas id="forecastCanvas" width="800" height="950"></canvas>
+    <canvas id="historicalCanvas" width="800" height="400"></canvas>
+
+    <script>
+        // Get references to the three canvas elements and their contexts
+        const canvas = document.getElementById("weatherCanvas");
+        const ctx = canvas.getContext("2d");
+
+        const forecastCanvas = document.getElementById("forecastCanvas");
+        const forecastCtx = forecastCanvas.getContext("2d");
+
+        const historicalCanvas = document.getElementById("historicalCanvas");
+        const historicalCtx = historicalCanvas.getContext("2d");
+
+        function showWeatherCanvas() {
+            weatherCanvas.style.display = "block";
+            forecastCanvas.style.display = "none";
+            historicalCanvas.style.display = "none";
+
+            // Call the function to get weather data when the button is clicked
+            getWeatherData();
+        }
+
+        function showForecastCanvas() {
+            weatherCanvas.style.display = "none";
+            forecastCanvas.style.display = "block";
+            historicalCanvas.style.display = "none";
+
+            // Call the function to display 5-day forecast when the button is clicked
+            getWeatherData();
+        }
+
+        function showHistoricalCanvas() {
+            weatherCanvas.style.display = "none";
+            forecastCanvas.style.display = "none";
+            historicalCanvas.style.display = "block";
+
+            // Call the function to display historical data when the button is clicked
+            getWeatherData();
+        }
+
+        // Function to set the initial state of the canvases (all hidden)
+        function initialState() {
+            weatherCanvas.style.display = "none";
+            forecastCanvas.style.display = "none";
+            historicalCanvas.style.display = "none";
+        }
+        // Call the function to set the initial state
+        initialState();
+
+        // Function to cache weather data in local storage
+        function cacheWeatherData(city, weatherData, forecastData, historicalData, additionalData = {}) {
+            const dataToCache = {
+                weather: weatherData,
+                forecast: forecastData,
+                history: historicalData,
+                lastUpdate: additionalData.lastUpdate || new Date().getTime(),
+            };
+
+            const stringifiedData = JSON.stringify(dataToCache);
+            localStorage.setItem(city, stringifiedData);
+        }
+
+        // Function to get cached weather data from local storage
+        function getCachedWeatherData(city) {
+            const cachedData = localStorage.getItem(city);
+
+            if (cachedData) {
+                try {
+                    const parsedData = JSON.parse(cachedData);
+
+                    if (parsedData && parsedData.weather && parsedData.forecast && parsedData.history) {
+                        const currentTime = new Date().getTime();
+                        const lastUpdateTime = parsedData.lastUpdate || 0;
+                        const timeSinceLastUpdate = currentTime - lastUpdateTime;
+
+                        // Check if the data is still within the acceptable time limit (e.g., 30 minutes)
+                        const cacheTimeLimit = 30 * 60 * 1000;
+                        if (timeSinceLastUpdate < cacheTimeLimit) {
+                            console.log("Using cached data:", parsedData);
+                            return parsedData;
+                        } else {
+                            console.log("Cached data is outdated. Refreshing data.");
+                        }
+                    } else {
+                        console.log("Cached data has incorrect structure:", parsedData);
+                    }
+                } catch (error) {
+                    console.error("Error parsing cached data:", error);
+                }
+            }
+
+            return null;
+        }
+
+        // Async function to fetch weather data from the API
+        async function getWeatherData() {
+            console.log("getWeatherData function called");
+            
+            // API keys for Tomorrow.io and OpenCageData
+            const tomorrowApiKey = 'API_KEY'; //Tomorrow API
+            const openCageApiKey = 'API_KEY'; //OpenCage API
+            // Get the city name from the input field
+            const city = document.getElementById('cityInput').value;
+
+            // Alert user if no city is entered
+            if (!city) {
+                alert('Please enter a city name.');
+                return;
+            }
+
+            // Try to get cached data first
+            const cachedData = getCachedWeatherData(city);
+            if (cachedData) {
+                console.log("Using cached data:", cachedData);
+                displayWeatherData(cachedData.weather);
+                display5DayForecast(cachedData.forecast);
+                displayHistory(cachedData.history);
+                return;
+            }
+
+            const openCageOptions = {
+                method: 'GET',
+            };
+
+            try {
+                // Fetch location data from OpenCageData API
+                const openCageResponse = await fetch(`https://api.opencagedata.com/geocode/v1/json?q=${encodeURIComponent(city)}&key=${openCageApiKey}`, openCageOptions);
+
+                // Throw an error if the response is not OK
+                if (!openCageResponse.ok) {
+                    const errorData = await openCageResponse.json();
+                    throw new Error(errorData.error);
+                }
+
+                // Parse the location data from the response
+                const openCageData = await openCageResponse.json();
+
+                // Check if location data is available
+                if (openCageData.results && openCageData.results.length > 0) {
+                    const { lat, lng } = openCageData.results[0].geometry;
+
+                    console.log("Location Coordinates:", lat, lng);
+
+                    // Fetch current weather data from Tomorrow.io API
+                    const weatherResponse = await fetch(`https://api.tomorrow.io/v4/weather/realtime?location=${lat},${lng}&apikey=${tomorrowApiKey}`, openCageOptions);
+
+                    // Throw an error if the response is not OK
+                    if (!weatherResponse.ok) {
+                        const errorData = await weatherResponse.json();
+                        throw new Error(errorData.error);
+                    }
+
+                    // Parse the current weather data from the response
+                    const weatherData = await weatherResponse.json();
+                    console.log("Weather Data:", weatherData);
+
+                    // Fetch 5-day forecast data from Tomorrow.io API
+                    const forecastResponse = await fetch(`https://api.tomorrow.io/v4/weather/forecast?location=${lat},${lng}&apikey=${tomorrowApiKey}&fields=temperature&timesteps=1d&units=metric`, openCageOptions);
+
+                    if (!forecastResponse.ok) {
+                        const errorData = await forecastResponse.json();
+                        throw new Error(errorData.error);
+                    }
+
+                    // Parse the 5-day forecast data from the response
+                    const forecastData = await forecastResponse.json();
+                    console.log("Forecast Data:", forecastData);
+
+                    // Fetch historical data from Tomorrow.io API
+                    const historicalResponse = await fetch(`https://api.tomorrow.io/v4/weather/history/recent?location=${city}&apikey=${tomorrowApiKey}&fields=temperature&timesteps=1d&units=metric`, openCageOptions);
+                    if (!historicalResponse.ok) {
+                        const errorData = await historicalResponse.json();
+                        throw new Error(errorData.error);
+                    }
+
+                    // Parse the 5-day historical data from the response
+                    const historicalData = await historicalResponse.json();
+                    console.log("Historical Data:", historicalData);
+
+                    // Cache the data for future use
+                    cacheWeatherData(city, weatherData, forecastData, historicalData, { lastUpdate: new Date().getTime() });
+
+                    // Display the weather data on the canvas
+                    displayWeatherData(weatherData);
+                    // Display the 5-day forecast data on the forecast canvas
+                    display5DayForecast(forecastData);
+                    // Display the 5-day historical data on the historical canvas
+                    displayHistory(historicalData);
+                } else {
+                    throw new Error('Location data not available');
+                }
+            } catch (error) {
+                console.error(error);
+                alert(`Error fetching weather data: ${error.message}`);
+            }
+        }
+
+        // Object containing icons as Image elements
+        const icons = {
+            wind: new Image(),
+            tempHigh: new Image(),
+            tempLow: new Image(),
+            snow: new Image(),
+            rain: new Image(),
+            sunrise: new Image(),
+            sunset: new Image(),
+            humidity: new Image(),
+            pressure: new Image(),
+        };
+
+        // Set the source of each icon image
+        icons.wind.src = 'icons/wind.svg';
+        icons.tempHigh.src = 'icons/temperature-high.svg';
+        icons.tempLow.src = 'icons/temperature-low.svg';
+        icons.snow.src = 'icons/snow.svg';
+        icons.rain.src = 'icons/rain.svg';
+        icons.sunrise.src = 'icons/sunrise.svg';
+        icons.sunset.src = 'icons/sunset.svg';
+        icons.humidity.src = 'icons/humidity.svg';
+        icons.pressure.src = 'icons/pressure.svg';
+
+        // Function to draw an icon on the canvas
+        function drawIcon(ctx, icon, x, y, width, height) {
+            ctx.drawImage(icon, x, y, width, height);
+        }
+
+        // Function to display the current weather data on the weather canvas
+        function displayWeatherData(weatherData) {
+            console.log(weatherData);
+
+            // Clear the canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Display date and time
+            const dateTime = new Date();
+            ctx.font = "16px Poppins";
+            ctx.fillStyle = "#000";
+            ctx.fillText(`Date and Time: ${dateTime.toLocaleString()}`, 10, 30);
+
+            // Display temperature
+            ctx.font = "bold 45px Poppins";
+            ctx.fillStyle = "#000";
+            ctx.fillText(`${weatherData.data.values.temperature}°C`, 10, 88);
+
+            // Display other weather information
+            ctx.font = "16px Poppins";
+            ctx.fillStyle = "#2b2b2b";
+            drawIcon(ctx, icons.wind, 10, 115, 17, 17);
+            ctx.fillText(`Wind: ${weatherData.data.values.windSpeed} m/s`, 35, 130);
+            drawIcon(ctx, icons.humidity, 10, 145, 17, 17);
+            ctx.fillText(`Humidity: ${weatherData.data.values.humidity}%`, 35, 160);
+            drawIcon(ctx, icons.pressure, 400, 115, 17, 17);
+            ctx.fillText(`Pressure: ${weatherData.data.values.pressureSurfaceLevel} hPa`, 425, 130);
+            drawIcon(ctx, icons.rain, 400, 145, 17, 17);
+            ctx.fillText(`Rain Accumulation: ${weatherData.data.values.visibility} mi`, 425, 160);
+        }
+
+        // Function to display the 5-day forecast data on the forecast canvas
+        function display5DayForecast(weatherData) {
+            console.log(weatherData);
+
+            // Clear the forecast canvas
+            forecastCtx.clearRect(0, 0, forecastCanvas.width, forecastCanvas.height);
+
+            // Display title
+            forecastCtx.font = "24px Poppins";
+            forecastCtx.fillStyle = "#1b4de4";
+            forecastCtx.fillText("5-Day Forecast", 10, 35);
+
+            const dailyTimelines = weatherData.timelines.daily;
+            const xLeft = 10; // Initial x position for left column
+            const xRight = 400; // Initial x position for right column
+            const y = 80; // y position for forecast
+            const step = 180; // Horizontal spacing between forecast days
+
+            // Loop through the next 5 days
+            for (let i = 1; i <= 5; i++) {
+                const dayData = dailyTimelines[i];
+
+                // Check if data is available for the day
+                if (dayData && dayData.values) {
+                    // Extract relevant data for the day
+                    const date = new Date(dayData.time).toISOString().split('T')[0];
+                    const minTemp = dayData.values.temperatureMin;
+                    const maxTemp = dayData.values.temperatureMax;
+                    const humidityAvg = dayData.values.humidityAvg;
+                    const rainAccumulationAvg = dayData.values.rainAccumulationAvg;
+                    const snowAccumulationAvg = dayData.values.snowAccumulationAvg;
+                    const sunriseTime = new Date(dayData.values.sunriseTime).toLocaleTimeString();
+                    const sunsetTime = new Date(dayData.values.sunsetTime).toLocaleTimeString();
+                    const windSpeedAvg = dayData.values.windSpeedAvg;
+
+                    forecastCtx.font = " bold 20px Poppins";
+                    forecastCtx.fillStyle = "#000";
+                    forecastCtx.fillText(`Date: ${date}`, xLeft, y + (i - 1) * step);
+                    forecastCtx.font = "16px Poppins";
+                    forecastCtx.fillStyle = "#2b2b2b";
+
+                    drawIcon(forecastCtx, icons.tempLow, 10, y + 15 + (i - 1) * step, 17, 17);
+                    forecastCtx.fillText(`Min Temp: ${minTemp}°C`, 35, y + 30 + (i - 1) * step);
+                    drawIcon(forecastCtx, icons.tempHigh, 10, y + 45 + (i - 1) * step, 17, 17);
+                    forecastCtx.fillText(`Max Temp: ${maxTemp}°C`, 35, y + 60 + (i - 1) * step);
+                    drawIcon(forecastCtx, icons.humidity, 400, y + 15 + (i - 1) * step, 17, 17);
+                    forecastCtx.fillText(`Humidity Avg: ${humidityAvg}%`, 425, y + 30 + (i - 1) * step);
+                    drawIcon(forecastCtx, icons.wind, 400, y + 45 + (i - 1) * step, 17, 17);
+                    forecastCtx.fillText(`Wind Speed Avg: ${windSpeedAvg} m/s`, 425, y + 60 + (i - 1) * step);
+                    drawIcon(forecastCtx, icons.rain, 10, y + 75 + (i - 1) * step, 17, 17);
+                    forecastCtx.fillText(`Rain Accumulation: ${rainAccumulationAvg} mm`, 35, y + 90 + (i - 1) * step);
+                    drawIcon(forecastCtx, icons.snow, 10, y + 105 + (i - 1) * step, 17, 17);
+                    forecastCtx.fillText(`Snow Accumulation: ${snowAccumulationAvg} mm`, 35, y + 120 + (i - 1) * step);
+                    drawIcon(forecastCtx, icons.sunrise, 400, y + 75 + (i - 1) * step, 17, 17);
+                    forecastCtx.fillText(`Sunrise Time: ${sunriseTime}`, 425, y + 90 + (i - 1) * step);
+                    drawIcon(forecastCtx, icons.sunset, 400, y + 105 + (i - 1) * step, 17, 17);
+                    forecastCtx.fillText(`Sunset Time: ${sunsetTime}`, 425, y + 120 + (i - 1) * step);
+                }
+            }
+        }
+
+        // Function to display recent history data on the historical canvas
+        function displayHistory(historicalData) {
+            console.log(historicalData);
+
+            // Clear the historical canvas
+            historicalCtx.clearRect(0, 0, historicalCanvas.width, historicalCanvas.height);
+
+            // Display title
+            historicalCtx.font = "24px Poppins";
+            historicalCtx.fillStyle = "#1b4de4";
+            historicalCtx.fillText("Weather Recent History", 10, 35);
+
+            const dailyTimelines = historicalData.timelines.daily;
+            const xLeft = 10; // Initial x position for left column
+            const xRight = 400; // Initial x position for right column
+            const y = 80; // y position for historical data
+            const step = 180; // Horizontal spacing between historical days
+
+            for (let i = 0; i < 5; i++) {
+                const dayData = dailyTimelines[i];
+
+                if (dayData && dayData.values) {
+                    const date = new Date(dayData.time).toISOString().split('T')[0];
+                    const minTemp = dayData.values.temperatureMin;
+                    const maxTemp = dayData.values.temperatureMax;
+                    const humidityAvg = dayData.values.humidityAvg;
+                    const rainAccumulationAvg = dayData.values.rainAccumulationAvg;
+                    const snowAccumulationAvg = dayData.values.snowAccumulationAvg;
+                    const sunriseTime = new Date(dayData.values.sunriseTime).toLocaleTimeString();
+                    const sunsetTime = new Date(dayData.values.sunsetTime).toLocaleTimeString();
+                    const windSpeedAvg = dayData.values.windSpeedAvg;
+
+                    historicalCtx.font = "bold 20px Poppins";
+                    historicalCtx.fillStyle = "#000";
+                    historicalCtx.fillText(`Date: ${date}`, xLeft, y + i * step);
+                    historicalCtx.font = "16px Poppins";
+                    historicalCtx.fillStyle = "#2b2b2b";
+
+                    drawIcon(historicalCtx, icons.tempLow, 10, y + 15 + i * step, 17, 17);
+                    historicalCtx.fillText(`Min Temp: ${minTemp}°C`, 35, y + 30 + i * step);
+                    drawIcon(historicalCtx, icons.tempHigh, 10, y + 45 + i * step, 17, 17);
+                    historicalCtx.fillText(`Max Temp: ${maxTemp}°C`, 35, y + 60 + i * step);
+                    drawIcon(historicalCtx, icons.humidity, 400, y + 15 + i * step, 17, 17);
+                    historicalCtx.fillText(`Humidity Avg: ${humidityAvg}%`, 425, y + 30 + i * step);
+                    drawIcon(historicalCtx, icons.wind, 400, y + 45 + i * step, 17, 17);
+                    historicalCtx.fillText(`Wind Speed Avg: ${windSpeedAvg} m/s`, 425, y + 60 + i * step);
+                    drawIcon(historicalCtx, icons.rain, 10, y + 75 + i * step, 17, 17);
+                    historicalCtx.fillText(`Rain Accumulation: ${rainAccumulationAvg} mm`, 35, y + 90 + i * step);
+                    drawIcon(historicalCtx, icons.snow, 10, y + 105 + i * step, 17, 17);
+                    historicalCtx.fillText(`Snow Accumulation: ${snowAccumulationAvg} mm`, 35, y + 120 + i * step);
+                    drawIcon(historicalCtx, icons.sunrise, 400, y + 75 + i * step, 17, 17);
+                    historicalCtx.fillText(`Sunrise Time: ${sunriseTime}`, 425, y + 90 + i * step);
+                    drawIcon(historicalCtx, icons.sunset, 400, y + 105 + i * step, 17, 17);
+                    historicalCtx.fillText(`Sunset Time: ${sunsetTime}`, 425, y + 120 + i * step);
+                }
+            }
+        }
+    </script>
+</body>
+
+</html>

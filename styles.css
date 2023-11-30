@@ -1,0 +1,75 @@
+body {
+    font-family: 'Poppins', sans-serif;
+    background-color: rgb(11, 19, 30);
+    color: #fff;
+    margin: 0;
+    padding: 0;
+    text-align: center;
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.search-bar {
+    padding: 20px;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+}
+
+.autocomplete input {
+    padding: 10px;
+    width: 600px;
+    border: none;
+    background-color: rgb(32, 43, 59);
+    box-shadow: rgba(0, 0, 0, 0.08) 0px 0px 0px;
+    border-radius: 16px;
+    font-size: 16px;
+    color: #686868;
+    transition: background-color 0.3s;
+    margin-bottom: 10px;
+    font-family: 'Poppins';
+}
+
+.autocomplete input:focus {
+    background-color: #fff;
+}
+
+.autocomplete-dropdown > div:hover {
+    background-color: rgb(131, 137, 145);
+    color: #000;
+    cursor: pointer;
+    width: fit-content;
+}
+
+.search-button {
+    font-family: 'Poppins';
+    background-color: #007BFF;
+    color: #fff;
+    padding: 15px 30px;
+    border: none;
+    border-radius: 16px;
+    font-size: 16px;
+    transition: background-color 0.3s;
+    cursor: pointer;
+    margin: 10px 0;
+}
+
+.search-button:hover {
+    background-color: #0056B3;
+}
+
+canvas {
+    display: block;
+    margin: 20px auto;
+    border-radius: 10px;
+    color: #000;
+    background-color: #fff;
+}
